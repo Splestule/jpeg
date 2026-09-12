@@ -11,16 +11,19 @@ struct Image {
 };
 
 // Cosine bases for DCT
-Matrix8 A = {{
-      {0.353553,  0.353553, 0.353553, 0.353553, 0.353553, 0.353553, 0.353553, 0.353553},
-      {0.490393, 0.415735, 0.277785, 0.097545,-0.097545,-0.277785,-0.415735,-0.490393},
-      {0.461940, 0.191342,-0.191342,-0.461940,-0.461940,-0.191342, 0.191342, 0.461940},
-      {0.415735, -0.097545,-0.490393,-0.277785, 0.277785, 0.490393, 0.097545,-0.415735},
-      {0.353553, -0.353553,-0.353553, 0.353553, 0.353553,-0.353553,-0.353553, 0.353553},
-      {0.277785, -0.490393, 0.097545, 0.415735,-0.415735,-0.097545, 0.490393,-0.277785},
-      {0.191342, -0.461940, 0.461940,-0.191342,-0.191342, 0.461940,-0.461940, 0.191342},
-      {0.097545, -0.277785, 0.415735,-0.490393, 0.490393,-0.415735, 0.277785,-0.097545}
-    }};
+Matrix8 makeDCTMatrix() {
+    const double PI = acos(-1.0);
+    Matrix8 M{};
+    for (int u = 0; u < 8; u++) {
+        double k = (u == 0) ? sqrt(1.0/8) : 0.5;
+        for (int x = 0; x < 8; x++) {
+            M[u][x] = k * cos((2*x + 1) * u * PI / 16.0);
+        }
+    }
+    return M;
+}
+
+const Matrix8 A = makeDCTMatrix();
 
 Matrix8 matmul(const Matrix8& A, const Matrix8& B) {
     Matrix8 C{};
@@ -44,7 +47,7 @@ Matrix8 transpose(const Matrix8& M) {
     return C;
 }
 
-Matrix8 dct8x8(const double in[8][8]) {
+Matrix8 dct8x8(Matrix8 in) {
     Matrix8 out;
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
@@ -52,6 +55,16 @@ Matrix8 dct8x8(const double in[8][8]) {
         }
     }
     return matmul(matmul(A, out), transpose(A));
+}
+
+Matrix8 idct8x8(Matrix8 in) {
+    Matrix8 out = matmul(matmul(transpose(A), in), A);
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            out[i][j] += 128;
+        }
+    }
+    return out;
 }
 
 Image processBlocks(const Image& input) {
@@ -67,16 +80,18 @@ Image processBlocks(const Image& input) {
             const int start_point = i * 8 + input.width * j * 8;
             const int start_point_write = i * 8 + new_width * j * 8;
 
-            double block[8][8];
+            Matrix8 block;
             for (int k = 0; k < 8; k++) {
                 for (int l = 0; l < 8; l++) {
                     block[k][l] = input.pixels[start_point + l + k * input.width];
                 }
             }
             // TODO: math stuff
+            block = dct8x8(block);
+            block = idct8x8(block);
             for (int k = 0; k < 8; k++) {
                 for (int l = 0; l < 8; l++) {
-                    pixels_out[start_point_write + l + k * new_width] = block[k][l];
+                    pixels_out[start_point_write + l + k * new_width] = clamp(static_cast<int>(lround(block[k][l])), 0, 255);
                 }
             }
         }
@@ -96,8 +111,19 @@ void pixels2img(const char* out_loc, const Image& input) {
     }
 }
 
+void printMatrix(const Matrix8& M) {
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) cerr << setw(10) << fixed << setprecision(4) << M[i][j];
+        cerr << "\n";
+    }
+}
+
 
 int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        cerr << "use: " << argv[0] << " in.pgm out.pgm\n";
+        return 1;
+    }
 
     ifstream in(argv[1]);
     if (!in) { cerr << "Cannot open in.pgm" << "\n"; return 1; }
