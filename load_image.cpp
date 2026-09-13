@@ -2,6 +2,7 @@
 #include <cassert>
 #include <array>
 using Matrix8 = std::array<std::array<double, 8>, 8>;
+using Matrix8i = std::array<std::array<int, 8>, 8>;
 
 using namespace std;
 
@@ -25,6 +26,39 @@ Matrix8 makeDCTMatrix() {
 
 const Matrix8 A = makeDCTMatrix();
 
+const Matrix8i Q50 = {
+    {
+        {16, 11, 10, 16,  24,  40,  51,  61},
+       {12, 12, 14, 19,  26,  58,  60,  55},
+       {14, 13, 16, 24,  40,  57,  69,  56},
+       {14, 17, 22, 29,  51,  87,  80,  62},
+       {18, 22, 37, 56,  68, 109, 103,  77},
+       {24, 35, 55, 64,  81, 104, 113,  92},
+       {49, 64, 78, 87, 103, 121, 120, 101},
+       {72, 92, 95, 98, 112, 100, 103,  99}
+    }
+};
+
+Matrix8i quant_table(int quality) {
+    Matrix8i quant_dividers;
+    quality = clamp(quality, 1, 100);
+    int S = (quality < 50) ? 5000 / quality : 200 - 2 * quality;
+    for (int u = 0; u < 8; u++) {
+        for (int v = 0; v < 8; v++) {
+            quant_dividers[u][v] = clamp((S * Q50[u][v] + 50) / 100, 1, 255);
+        }
+    }
+    return quant_dividers;
+}
+
+void quant_block(Matrix8& block, const Matrix8i& quant_dividers) {
+    for (int u = 0; u < 8; u++) {
+        for (int v = 0; v < 8; v++) {
+            block[u][v] = static_cast<double>(lround(block[u][v] / quant_dividers[u][v])) * quant_dividers[u][v];
+        }
+    }
+}
+
 Matrix8 matmul(const Matrix8& A, const Matrix8& B) {
     Matrix8 C{};
     for (int i = 0; i < 8; i++) {
@@ -47,8 +81,8 @@ Matrix8 transpose(const Matrix8& M) {
     return C;
 }
 
-Matrix8 dct8x8(Matrix8 in) {
-    Matrix8 out;
+Matrix8 dct8x8(const Matrix8& in) {
+    Matrix8 out{};
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             out[i][j] = in[i][j] - 128;
@@ -57,7 +91,7 @@ Matrix8 dct8x8(Matrix8 in) {
     return matmul(matmul(A, out), transpose(A));
 }
 
-Matrix8 idct8x8(Matrix8 in) {
+Matrix8 idct8x8(const Matrix8& in) {
     Matrix8 out = matmul(matmul(transpose(A), in), A);
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
@@ -67,7 +101,7 @@ Matrix8 idct8x8(Matrix8 in) {
     return out;
 }
 
-Image processBlocks(const Image& input) {
+Image processBlocks(const Image& input, const Matrix8i& quant_dividers) {
     vector<int> num_of_blocks(2);
     num_of_blocks[0] = input.width / 8;
     num_of_blocks[1] = input.height / 8;
@@ -80,7 +114,7 @@ Image processBlocks(const Image& input) {
             const int start_point = i * 8 + input.width * j * 8;
             const int start_point_write = i * 8 + new_width * j * 8;
 
-            Matrix8 block;
+            Matrix8 block{};
             for (int k = 0; k < 8; k++) {
                 for (int l = 0; l < 8; l++) {
                     block[k][l] = input.pixels[start_point + l + k * input.width];
@@ -88,6 +122,7 @@ Image processBlocks(const Image& input) {
             }
             // TODO: math stuff
             block = dct8x8(block);
+            quant_block(block, quant_dividers);
             block = idct8x8(block);
             for (int k = 0; k < 8; k++) {
                 for (int l = 0; l < 8; l++) {
@@ -120,8 +155,8 @@ void printMatrix(const Matrix8& M) {
 
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        cerr << "use: " << argv[0] << " in.pgm out.pgm\n";
+    if (argc < 4) {
+        cerr << "use: " << argv[0] << " in.pgm out.pgm quality\n";
         return 1;
     }
 
@@ -140,10 +175,10 @@ int main(int argc, char* argv[]) {
         in >> img.pixels[i];
     }
 
-    Image img_out = processBlocks(img);
-    pixels2img(argv[2], img_out);
+    int quality = stoi(argv[3]);
 
-    assert(img.pixels == img_out.pixels);
+    Image img_out = processBlocks(img, quant_table(quality));
+    pixels2img(argv[2], img_out);
 
     return 0;
 }
