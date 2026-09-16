@@ -24,6 +24,8 @@ Matrix8 makeDCTMatrix() {
     return M;
 }
 
+int zero_coeffs = 0;
+
 const Matrix8 A = makeDCTMatrix();
 
 const Matrix8i Q50 = {
@@ -55,6 +57,9 @@ void quant_block(Matrix8& block, const Matrix8i& quant_dividers) {
     for (int u = 0; u < 8; u++) {
         for (int v = 0; v < 8; v++) {
             block[u][v] = static_cast<double>(lround(block[u][v] / quant_dividers[u][v])) * quant_dividers[u][v];
+            if (block[u][v] == 0) {
+                zero_coeffs++;
+            }
         }
     }
 }
@@ -120,7 +125,6 @@ Image processBlocks(const Image& input, const Matrix8i& quant_dividers) {
                     block[k][l] = input.pixels[start_point + l + k * input.width];
                 }
             }
-            // TODO: math stuff
             block = dct8x8(block);
             quant_block(block, quant_dividers);
             block = idct8x8(block);
@@ -179,6 +183,16 @@ int main(int argc, char* argv[]) {
 
     Image img_out = processBlocks(img, quant_table(quality));
     pixels2img(argv[2], img_out);
+
+    cout << "Percentage of zero coefficients: " << static_cast<float>(zero_coeffs) / static_cast<float>(img_out.width * img_out.height) << endl;
+
+    int pix_diff_sum = 0;
+
+    for (int i = 0; i < img_out.width * img_out.height; i++) {
+        pix_diff_sum += abs(img.pixels[i] - img_out.pixels[i]);
+    }
+
+    cout << "Average pixel deviation: " << static_cast<float>(pix_diff_sum) / static_cast<float>(img_out.width * img_out.height) << endl;
 
     return 0;
 }
