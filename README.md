@@ -30,3 +30,7 @@ Last argument is quality, 1–100.
 
 At quality 10 the 8x8 blocks become visible.
 
+
+| original | quality 90 | quality 50 | quality 10 |
+|:--------:|:----------:|:----------:|:----------:|
+| <img src="docs/original.png" width="160"> | <img src="docs/q90.png" width="160"> | <img src="docs/q50.png" width="160"> | <img src="docs/q10.png" width="160"> |
